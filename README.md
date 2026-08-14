@@ -1,5 +1,7 @@
 # dsh-net-proxy
 
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 DeepSeek Harness 网络代理插件：让 **agent 自己发起的网络请求**（`web_search` / `web_fetch` / 外部 API）走你配置的 HTTP / HTTPS-CONNECT / SOCKS5 代理，配置持久化、启动即自动生效，并提供可视化设置页。
 
 - 服务端：包装 agent 进程的全局 `fetch`，让所有请求走代理（手写转发，无第三方代理依赖）。
