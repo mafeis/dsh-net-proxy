@@ -1,0 +1,12 @@
+{
+  "name": "dsh-net-proxy",
+  "owner": "mafeis",
+  "url": "https://github.com/mafeis/dsh-net-proxy",
+  "category": "network",
+  "description": {
+    "en": "Route the agent's network requests (web_search / web_fetch / external APIs) through a local HTTP/CONNECT/SOCKS5 proxy.",
+    "zh": "让 agent 的网络请求（搜索/抓取/外部 API）走本机 HTTP/CONNECT/SOCKS5 代理，带配置界面。"
+  },
+  "install": "dsh plugin --profile web add github:mafeis/dsh-net-proxy",
+  "added": "2026-08-14"
+}
