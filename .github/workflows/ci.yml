@@ -17,4 +17,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - run: node --version
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - run: npm run lint
       - run: npm test

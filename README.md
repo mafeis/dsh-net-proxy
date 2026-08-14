@@ -40,6 +40,11 @@ MIT
 
 ## 变更记录
 
+### v0.2.5
+- `index.js` 的设置路由 handler 抽到 `lib/routes.js`（纯函数，新增 4 项单测，共 24 项全绿）。
+- `client.js` 拆组件：把 `NetProxySection` 的巨型 return 拆为 `Header`/`StatusBadge`/`StatusToggle`/`ProbeResult` 纯展示子组件（渲染等价、不动 UMD 结构）。
+- 新增 eslint 门禁（`eslint.config.js` + `npm run lint`，接入 CI；`--legacy-peer-deps` 适配私有 `@deepseek-ai/*` peer）；加 `.gitignore`。
+
 ### v0.2.4
 - 继续工程化拆分：`proxy-fetch.js` 拆为 `lib/proxy/{conn,http11,http2,request}.js`（连接/隧道与 ByteStream、HTTP/1.1 请求、HTTP/2 请求、入口与协议分发），`proxy-fetch.js` 变为纯 re-export 聚合入口；行为不变，20/20 全绿。
 
