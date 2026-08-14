@@ -1,6 +1,6 @@
 {
   "name": "dsh-net-proxy",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DeepSeek Harness network-proxy plugin: route the agent's own network requests (web_search / web_fetch / external APIs) through a configured HTTP/HTTPS-CONNECT/SOCKS5 proxy, persisted and auto-applied at startup, with a settings UI.",
   "type": "module",
   "main": "lib/index.js",
