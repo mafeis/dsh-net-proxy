@@ -48,5 +48,8 @@
   "peerDependencies": {
     "@deepseek-ai/schemastery": ">=0.0.1-rc.1 <0.2.0",
     "@deepseek-ai/dsh-client-ui-primitives": ">=0.0.1-rc.1 <0.2.0"
+  },
+  "scripts": {
+    "test": "node --test"
   }
 }
