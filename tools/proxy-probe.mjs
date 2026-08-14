@@ -3,36 +3,46 @@
 //
 // 用法：
 //   node tools/proxy-probe.mjs [--proxy 127.0.0.1:7890] [--target <url>] [--timeout <ms>]
+//   node tools/proxy-probe.mjs --proxy socks5://127.0.0.1:7890
+//   node tools/proxy-probe.mjs --proxy http://127.0.0.1:7890
 //
-// 输出一行摘要： OK/FAIL，代理 TCP 延迟、整体总延迟、目标 HTTP 状态。
+// 输出一行摘要：OK/FAIL，代理 TCP 延迟、整体总延迟、目标 HTTP 状态。
 import { probeProxy } from "../lib/probe.js";
+
+function parseProxySpec(v) {
+  let url;
+  try {
+    url = new URL(v.includes("://") ? v : "http://" + v);
+  } catch {
+    return { protocol: "http", host: v.split(":")[0], port: Number(v.split(":")[1] || 7890) };
+  }
+  let protocol = url.protocol.replace(":", "").toLowerCase();
+  // 代理自身走 http/socks5；https 的代理说明一般仍以 http 隧道建立后再 https，这里按 http 处理
+  if (protocol === "https") protocol = "http";
+  if (protocol !== "http" && protocol !== "socks" && protocol !== "socks5") protocol = "http";
+  return {
+    protocol,
+    host: url.hostname,
+    port: url.port ? Number(url.port) : 7890,
+  };
+}
 
 function parseArgs(argv) {
   const out = { proxy: { protocol: "http", host: "127.0.0.1", port: 7890, noProxy: [] }, target: undefined, timeout: 15000 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--proxy") {
-      const v = argv[++i];
-      const m = /^(?:((?:socks5?):)?\/\/)?([^:]+):(\d+)$/.exec(v);
-      if (m) {
-        out.proxy.protocol = m[1] ? m[1].replace("://", "") : "http";
-        out.proxy.host = m[2];
-        out.proxy.port = Number(m[3]);
-      } else {
-        out.proxy = { protocol: "http", host: v.split(":")[0], port: Number(v.split(":")[1] || 7890), noProxy: [] };
-      }
-    } else if (a === "--target") out.target = argv[++i];
+    if (a === "--proxy") out.proxy = { ...parseProxySpec(argv[++i]), noProxy: [] };
+    else if (a === "--target") out.target = argv[++i];
     else if (a === "--timeout") out.timeout = Number(argv[++i]);
   }
+  out.proxy.noProxy = [];
   return out;
 }
 
 const cfg = parseArgs(process.argv.slice(2));
-const t0 = performance.now();
 const res = await probeProxy(cfg.proxy, { target: cfg.target, timeout: cfg.timeout }).catch((e) => ({ ok: false, error: (e && e.message) || String(e) }));
 
-const line = `${res.ok ? "✔ OK  " : "✘ FAIL"}  proxy=${cfg.proxy.host}:${cfg.proxy.port} target=${res.target}`;
-console.log(line);
+console.log(`${res.ok ? "✔ OK  " : "✘ FAIL"}  proxy=${cfg.proxy.host}:${cfg.proxy.port}(${cfg.proxy.protocol}) target=${res.target}`);
 console.log(`   代理 TCP: ${res.connectMs >= 0 ? res.connectMs + " ms" : "失败"}`);
 console.log(`   总延迟(经代理到目标): ${res.totalMs >= 0 ? res.totalMs + " ms" : "—"}`);
 console.log(`   目标 HTTP 状态: ${res.httpStatus >= 0 ? res.httpStatus : "—"}`);
