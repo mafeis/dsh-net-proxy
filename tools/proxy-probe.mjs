@@ -14,6 +14,8 @@ function parseProxySpec(v) {
   try {
     url = new URL(v.includes("://") ? v : "http://" + v);
   } catch {
+    // URL 解析失败：IPv6 字面量（如 "::1"）不能按 "host:port" 拆分
+    if (v.includes("::")) return { protocol: "http", host: v, port: 7890 };
     return { protocol: "http", host: v.split(":")[0], port: Number(v.split(":")[1] || 7890) };
   }
   let protocol = url.protocol.replace(":", "").toLowerCase();

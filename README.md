@@ -40,6 +40,19 @@ MIT
 
 ## 变更记录
 
+### v0.2.6
+- **兼容性修复**：`peerDependencies` 改为与 harness 实际版本匹配的显式范围——`@deepseek-ai/schemastery` 实为 3.x 线（原 `<0.2.0` 上限完全错位，改 `^3.18.1`）；`@deepseek-ai/dsh-client-ui-primitives` 按预发布规则补显式分支（`^0.1.0-rc.6 || ^0.1.1-rc.1`），消除安装期 ERESOLVE/兼容告警。
+- **协议栈加固**：
+  - `proxiedOnce`：socks5 + 明文 http 目标此前完全未走 SOCKS 隧道（裸发 HTTP 到 SOCKS 端口），已修复（隧道 + origin-form）；
+  - `httpConnect`：读完状态行即 detach 会把分包到达的代理响应头漏进 TLS 流，现消费至空行（带行数上限）；
+  - 流式请求体改用 `Transfer-Encoding: chunked`（RFC 7230：请求体不能以连接关闭定界，原实现必 400）；
+  - SOCKS5 CONNECT：IPv4 字面量改用 ATYP=0x01 二进制；
+  - `connectProxy`/TLS 握手/HTTP/2 全链路接入超时（默认 60s，防 TCP 黑洞挂死）。
+- **输入健壮性**：`proxiedFetch` 支持 URL 实例入参（原抛 Invalid URL）；body 支持 URLSearchParams/Blob/TypedArray，Node 流走 chunked，`ReadableStream` 等不支持类型明确报 `EBODY`；noProxy 修复 IPv6 回环（`[::1]` 带括号不匹配、`::1` 条目被 `:\d+$` 误拆为 host:port）。
+- **安全**：设置路由 GET 回传密码打码（`***`），POST 收到 `***` 保留原值；POST 体积上限 64KB；跨源重定向剥 `Authorization`（对齐标准 fetch）。
+- **工程**：服务端日志接入 `ctx.logger`（无则退回 console）；probe 支持自定义 target（`action:"probe"` 新增 `target` 字段）；`package.json` 补 `engines.node >=18`。
+- **测试**：新增 HTTPS CONNECT（自签证书真实 TLS）与 SOCKS5（无认证/RFC1929 正误认证）端到端、CONNECT 分包响应头残留回归、noProxy IPv6 回归、入参/body 类型共 7 个测试文件，合计 35 项全绿。
+
 ### v0.2.5
 - `index.js` 的设置路由 handler 抽到 `lib/routes.js`（纯函数，新增 4 项单测，共 24 项全绿）。
 - `client.js` 拆组件：把 `NetProxySection` 的巨型 return 拆为 `Header`/`StatusBadge`/`StatusToggle`/`ProbeResult` 纯展示子组件（渲染等价、不动 UMD 结构）。
