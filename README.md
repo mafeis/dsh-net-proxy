@@ -29,16 +29,37 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 | 字段 | 默认 | 含义 |
 |---|---|---|
 | `enabled` | `false` | 是否启用代理 |
+| `followSystem` | `false` | 跟随系统代理（见下） |
 | `protocol` | `http` | `http`（含 CONNECT 隧道）或 `socks5` |
 | `host` / `port` | `127.0.0.1` / `7890` | 代理地址 |
 | `username` / `password` | 空 | 可选认证 |
 | `noProxy` | `["127.0.0.1","localhost","::1"]` | 命中则直连 |
+
+## 跟随系统代理（v0.3.0）
+
+开启 `followSystem` 后，插件每 3 秒读取操作系统的系统代理设置，自动启停、自动跟随端口变化（v2rayN / Clash 切换无需改配置）：
+
+- **系统代理开** → 自动启用，地址/端口取自系统设置（凭据仍用手动配置的用户名/密码）；
+- **系统代理关** → 自动直连（解决"代理工具没开但 DSH 还挂着代理"）；
+- **`ProxyOverride`**（Windows 绕过列表）自动并入 `noProxy`（支持 `192.168.*`、`*.foo.com`、`<local>`）；
+- 数据源：Windows 注册表 `Internet Settings`（v2rayN/Clash 均写此处）/ macOS `scutil --proxy` / Linux `HTTP(S)_PROXY`、`ALL_PROXY`；
+- **PAC 模式**（AutoConfigURL）暂不支持自动跟随，回退手动配置并在设置页提示；
+- 在设置页手动修改地址/端口/协议并保存时，跟随会自动关闭（避免手动值被轮询覆盖）。
 
 ## 许可证
 
 MIT
 
 ## 变更记录
+
+### v0.3.0
+- **新功能：跟随系统代理**（[#4](https://github.com/mafeis/dsh-net-proxy/issues/4)）：
+  - 新增 `followSystem` 配置与设置页开关：每 3 秒读取系统代理设置——系统开启则自动启用并跟随地址/端口变化（v2rayN ↔ Clash 切换端口无需改配置），系统关闭则自动直连；
+  - 数据源：Windows 注册表 `Internet Settings`（`ProxyEnable`/`ProxyServer`/`ProxyOverride`，v2rayN 与 Clash 的"设置系统代理"均写此处）/ macOS `scutil --proxy` / Linux `HTTP(S)_PROXY`、`ALL_PROXY`、`NO_PROXY`；
+  - `ProxyServer` 分协议格式（`http=..;https=..;socks=..`）与单值格式均支持；`ProxyOverride` 绕过列表自动并入 `noProxy`，并新增前缀通配（`192.168.*`）与 `*.foo.com` 形式支持；
+  - PAC（`AutoConfigURL`）暂不支持跟随：回退手动配置并在设置页提示；
+  - 设置页实时显示检测到的系统代理状态（已跟随 `host:port` / 未开启已直连 / PAC 回退）；手动修改地址/端口/协议保存时自动关闭跟随；
+  - 实现：`lib/system-proxy.js`（解析/合并均为纯函数，`readSystemProxy` 可注入 execFn/env/platform），设置路由 GET 增加系统状态字段；新增 14 项测试，合计 68 项全绿。
 
 ### v0.2.7
 - **安全（设置路由）**：
