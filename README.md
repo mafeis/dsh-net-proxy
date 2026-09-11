@@ -53,13 +53,8 @@ MIT
 ## 变更记录
 
 ### v0.3.0
-- **新功能：跟随系统代理**（[#4](https://github.com/mafeis/dsh-net-proxy/issues/4)）：
-  - 新增 `followSystem` 配置与设置页开关：每 3 秒读取系统代理设置——系统开启则自动启用并跟随地址/端口变化（v2rayN ↔ Clash 切换端口无需改配置），系统关闭则自动直连；
-  - 数据源：Windows 注册表 `Internet Settings`（`ProxyEnable`/`ProxyServer`/`ProxyOverride`，v2rayN 与 Clash 的"设置系统代理"均写此处）/ macOS `scutil --proxy` / Linux `HTTP(S)_PROXY`、`ALL_PROXY`、`NO_PROXY`；
-  - `ProxyServer` 分协议格式（`http=..;https=..;socks=..`）与单值格式均支持；`ProxyOverride` 绕过列表自动并入 `noProxy`，并新增前缀通配（`192.168.*`）与 `*.foo.com` 形式支持；
-  - PAC（`AutoConfigURL`）暂不支持跟随：回退手动配置并在设置页提示；
-  - 设置页实时显示检测到的系统代理状态（已跟随 `host:port` / 未开启已直连 / PAC 回退）；手动修改地址/端口/协议保存时自动关闭跟随；
-  - 实现：`lib/system-proxy.js`（解析/合并均为纯函数，`readSystemProxy` 可注入 execFn/env/platform），设置路由 GET 增加系统状态字段；新增 14 项测试，合计 68 项全绿。
+- **新功能：跟随系统代理**（[#4](https://github.com/mafeis/dsh-net-proxy/issues/4)）：新增 `followSystem` 配置与设置页开关，自动跟随系统代理的开关与端口变化，系统关闭时自动直连——详见上文[「跟随系统代理」](#跟随系统代理v030)一节。
+- 附带 v0.2.7 的全部安全与健壮性修复（见下方 v0.2.7 条目）；新增 14 项测试，合计 68 项全绿。
 
 ### v0.2.7
 - **安全（设置路由）**：
