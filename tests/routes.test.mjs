@@ -11,12 +11,13 @@ function fakeRes() {
   r.end = (s) => { r.data = s; };
   return r;
 }
-function fakeReq(method, body) {
-  const r = { method, _body: body };
+function fakeReq(method, body, headers) {
+  const r = { method, _body: body, headers: headers || {} };
   r.on = (ev, cb) => { if (ev === "data" && r._body != null) cb(r._body); if (ev === "end") cb(); };
   return r;
 }
 const flush = () => new Promise((r) => setImmediate(r));
+const OK_HEADERS = { host: "127.0.0.1:43120", "x-dsh-net-proxy": "1" };
 
 test("routes: GET 返回当前配置（文件不存在 → defaults）", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nproutes-"));
@@ -38,7 +39,7 @@ test("routes: POST 写配置并触发 reloadFn", async () => {
     const file = path.join(dir, "net-proxy.json");
     let reloaded = 0;
     const res = fakeRes();
-    settingsHandler(fakeReq("POST", JSON.stringify({ enabled: true, host: "1.2.3.4", protocol: "socks5" })), res, file, () => { reloaded++; });
+    settingsHandler(fakeReq("POST", JSON.stringify({ enabled: true, host: "1.2.3.4", protocol: "socks5" }), OK_HEADERS), res, file, () => { reloaded++; });
     await flush();
     assert.equal(res.status, 200);
     const body = JSON.parse(res.data);
@@ -55,7 +56,7 @@ test("routes: POST action=probe 调用 probeFn 且不改配置", async () => {
     const file = path.join(dir, "net-proxy.json");
     let got = null;
     const res = fakeRes();
-    settingsHandler(fakeReq("POST", JSON.stringify({ action: "probe", proxy: { host: "x", port: 9 } })), res, file, undefined,
+    settingsHandler(fakeReq("POST", JSON.stringify({ action: "probe", proxy: { host: "x", port: 9 } }), OK_HEADERS), res, file, undefined,
       (p) => { got = p; return Promise.resolve({ ok: true, connectMs: 3 }); });
     await flush();
     assert.equal(res.status, 200);

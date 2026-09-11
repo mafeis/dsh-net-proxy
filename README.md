@@ -40,6 +40,25 @@ MIT
 
 ## 变更记录
 
+### v0.2.7
+- **安全（设置路由）**：
+  - `/_dsh/net-proxy` 增加 Host 白名单校验（回环 + 本机网卡地址，防 DNS rebinding）、POST 必需自定义头 `X-DSH-Net-Proxy: 1`（跨站「简单请求」无法携带，阻断 CSRF 改写代理配置）、带 Origin 时要求与 Host 同源；
+  - `action:"probe"` 不再把已保存的代理凭据回填给任意第三方代理（仅当探测目标与当前配置为同一 host+port+protocol 时才回填），防止凭据外泄；probe 的密码 `***` 打码哨兵与写路径同规则还原（修复「测试连接」对有密码代理必失败）。
+- **协议栈健壮性**：
+  - HTTP CONNECT / SOCKS5 握手阶段（TCP 连上之后）接入 `timeoutMs` 超时与 AbortSignal——此前半开代理可让 fetch 无限挂死且不可取消；
+  - TLS 握手同样接入 abort。
+- **响应体生命周期**：
+  - HTTP/1.1 与 HTTP/2 的 body 读取期间 abort 现在立即生效（以 `AbortError` 拒绝），`resp.body.cancel()` 立即销毁 socket / 关闭 Http2Session（修复 SSE/大 body 场景的连接与 session 泄漏，含重定向跟随时的内部 cancel）；
+  - 声明了 `Content-Length` 却提前断流的响应改为报 `ERESP_END`，不再静默当作完整 body。
+- **fetch 契约**：`proxiedFetch(Request)` 现继承 Request 的 `method/headers/body/signal`（此前只继承 method，整个 agent 进程的 `fetch(new Request(...))` 都在静默丢 header/body）。
+- **noProxy**：修复前导点条目（`.example.com`）永不匹配的问题——现等价于 `example.com`（本域 + 全部子域）。
+- **工程**：
+  - 配置热改用 watch 父目录实现（原 watch 文件在 tmp+rename 原子写后失效，外部编辑器保存一次热更即静默失联）；
+  - `refreshProxy` 只在 wrap 状态翻转时才赋值 `globalThis.fetch`，卸载时校验仍是自己装的包装器才还原——不再踩掉/误拆其他插件的后装 fetch 包装；
+  - `toCfg` 写入前校验 `port`（1–65535）与 `protocol`（http/socks5/socks），脏配置 400 拒收不再落盘；
+  - 日志分级：常规信息走 `logger.info`，仅异常走 `logger.error`。
+- **测试**：新增 `tests/hardening.test.mjs` 16 项（路由安全校验、probe 哨兵、noProxy 前导点、握手超时/中止、body abort/cancel、CL 截断、Request 入参），合计 54 项全绿。
+
 ### v0.2.6
 - **兼容性修复**：`peerDependencies` 改为与 harness 实际版本匹配的显式范围——`@deepseek-ai/schemastery` 实为 3.x 线（原 `<0.2.0` 上限完全错位，改 `^3.18.1`）；`@deepseek-ai/dsh-client-ui-primitives` 按预发布规则补显式分支（`^0.1.0-rc.6 || ^0.1.1-rc.1`），消除安装期 ERESOLVE/兼容告警。
 - **协议栈加固**：
