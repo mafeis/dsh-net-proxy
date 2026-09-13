@@ -4,7 +4,7 @@
 
 DeepSeek Harness 网络代理插件：让 **agent 自己发起的网络请求**（`web_search` / `web_fetch` / 外部 API）走你配置的 HTTP / HTTPS-CONNECT / SOCKS5 代理，配置持久化、启动即自动生效，并提供可视化设置页。
 
-- 服务端：包装 agent 进程的全局 `fetch`，让所有请求走代理（手写转发，无第三方代理依赖）。
+- 服务端双通道生效：包装 agent 进程的全局 `fetch`（手写转发，无第三方代理依赖），并把策略同步安装进 `web_fetch` 实际使用的 **harness 代理层**（见下，v0.4.0）。
 - 配置存储在 `$DSH_HOME/net-proxy.json`，设置页经同源路由 `/_dsh/net-proxy` 读写，改动即时生效、无需重启。
 - `NO_PROXY` 默认排除本地回环。
 
@@ -46,11 +46,28 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 - **PAC 模式**（AutoConfigURL）暂不支持自动跟随，回退手动配置并在设置页提示；
 - 在设置页手动修改地址/端口/协议并保存时，跟随会自动关闭（避免手动值被轮询覆盖）。
 
+## web_fetch 与 harness 代理层（v0.4.0）
+
+DSH ≥ 0.1.5-rc.1 起，`web_fetch` 的出口不再经过 `globalThis.fetch`：它自带 undici 传输层，每个请求先询问 harness 的代理策略模块 `@deepseek-ai/dsh-http-proxy` 的 `proxyRouteFor()` 决定走向（[#5](https://github.com/mafeis/dsh-net-proxy/issues/5)）。仅包装全局 `fetch` 覆盖不到它。
+
+v0.4.0 起，插件把生效代理**同时安装进 harness 代理层**：定位 harness 已加载的同一模块实例（桌面端经 `process.resourcesPath` 命中 `app.asar` 内实例；CLI 布局按 argv/bare 解析顺序回退），启用、停用、热更、跟随切换全同步；禁用与卸载时还原到安装前状态，不污染启动器或其他插件的策略。
+
+限制与说明：
+
+- harness 代理层只接受 `http://` 代理 URL（`dsh-http-proxy` 的硬性约束）。协议选 `socks5` 时该层不安装（`web_fetch` 保持直连），fetch 包装层不受影响——Clash/v2rayN 的 mixed 端口同时提供 HTTP，把协议切到 HTTP 即可覆盖 `web_fetch`。
+- 两层互不替代：fetch 包装层覆盖所有直接调用 `globalThis.fetch` 的代码，harness 层覆盖 `web_fetch`。
+- 设置页「当前状态」下有一行 harness 层诊断（已安装并自检通过 / SOCKS 不适用 / 解析失败原因），解析不到时如实展示，不假装生效。
+
 ## 许可证
 
 MIT
 
 ## 变更记录
+
+### v0.4.0
+- **修复（[#5](https://github.com/mafeis/dsh-net-proxy/issues/5)）：`web_fetch` 现在真正走代理**。DSH 0.1.5-rc.1 起 `web_fetch` 绕过 `globalThis.fetch`（自带 undici 传输层 + harness 策略路由），旧版的全局 fetch 包装对其完全失效。现把生效策略同步安装进 harness 代理层 `@deepseek-ai/dsh-http-proxy`（写入 harness 已加载的同一模块实例），启用/停用/热更/跟随切换全同步，卸载还原；SOCKS5 不装该层并如实提示——详见上文[「web_fetch 与 harness 代理层」](#web_fetch-与-harness-代理层v040)一节。
+- 设置页新增 harness 层状态行；`GET /_dsh/net-proxy` 响应新增 `harness` 字段（`mode` / `via` / `proxy` / `verified`）。
+- `@deepseek-ai/dsh-http-proxy` 声明为可选 peerDependency；新增 12 项测试（含对真实 `dsh-http-proxy` 的「安装→路由可见→还原」端到端验证），合计 80 项全绿。
 
 ### v0.3.0
 - **新功能：跟随系统代理**（[#4](https://github.com/mafeis/dsh-net-proxy/issues/4)）：新增 `followSystem` 配置与设置页开关，自动跟随系统代理的开关与端口变化，系统关闭时自动直连——详见上文[「跟随系统代理」](#跟随系统代理v030)一节。

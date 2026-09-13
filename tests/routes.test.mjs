@@ -76,3 +76,23 @@ test("routes: 非 GET/POST → 405", () => {
     assert.equal(res.status, 405);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("routes: GET 带出 harness 代理层状态（opts.harnessInfo）", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nproutes-"));
+  try {
+    const file = path.join(dir, "net-proxy.json");
+    const res = fakeRes();
+    settingsHandler(fakeReq("GET"), res, file, undefined, undefined, {
+      harnessInfo: () => ({ mode: "installed", via: "asar", proxy: "http://127.0.0.1:7890", verified: true }),
+    });
+    assert.equal(res.status, 200);
+    const body = JSON.parse(res.data);
+    assert.equal(body.harness.mode, "installed");
+    assert.equal(body.harness.via, "asar");
+    assert.equal(body.harness.verified, true);
+    // 未提供 harnessInfo 时不带该字段（向后兼容旧调用方）
+    const res2 = fakeRes();
+    settingsHandler(fakeReq("GET"), res2, file);
+    assert.equal(JSON.parse(res2.data).harness, undefined);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

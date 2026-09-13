@@ -1,7 +1,7 @@
 {
   "name": "dsh-net-proxy",
-  "version": "0.3.0",
-  "description": "DeepSeek Harness network-proxy plugin: route the agent's own network requests (web_search / web_fetch / external APIs) through a configured HTTP/HTTPS-CONNECT/SOCKS5 proxy, persisted and auto-applied at startup, with a settings UI.",
+  "version": "0.4.0",
+  "description": "DeepSeek Harness network-proxy plugin: route the agent's own network requests (web_search / web_fetch / external APIs) through a configured HTTP/HTTPS-CONNECT/SOCKS5 proxy — both the global fetch wrapper and the harness proxy layer that web_fetch actually uses — persisted and auto-applied at startup, with a settings UI.",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",
@@ -50,15 +50,23 @@
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6 || ^0.1.1-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/dsh-http-proxy": "^0.1.5-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-http-proxy": {
+      "optional": true
+    }
   },
   "scripts": {
     "test": "node --test",
     "lint": "eslint ."
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-http-proxy": "^0.1.5-rc.1",
     "@eslint/js": "^10.0.1",
     "eslint": "^9.39.5",
-    "globals": "^17.11.0"
+    "globals": "^17.11.0",
+    "undici": "^8.10.0"
   }
 }
