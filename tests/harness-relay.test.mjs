@@ -1,0 +1,73 @@
+// tests/harness-relay.test.mjs — harness 层与中继的协同：中继不得被「先还原再装」误杀
+// 用注入的假模块替代真实 dsh-http-proxy，聚焦生命周期正确性。
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createHarnessProxySync } from "../lib/harness-proxy.js";
+import { createRelay } from "../lib/relay.js";
+import { createTrafficLog } from "../lib/traffic-log.js";
+
+function fakeModule() {
+  let disposed = 0;
+  return {
+    mod: {
+      installProxyFromEnvironment: async (env) => {
+        const url = env.get("http_proxy").value;
+        return async () => { disposed++; };
+      },
+      proxyRouteFor: () => ({ proxied: true }),
+    },
+    via: "fake",
+    disposedCount: () => disposed,
+  };
+}
+
+const PROXY = { protocol: "http", host: "127.0.0.1", port: 7890, noProxy: ["127.0.0.1"] };
+
+test("harness-relay: 首次 sync 安装后中继必须仍在监听（回归：teardown 误杀）", async () => {
+  const log = createTrafficLog({});
+  const relay = createRelay({ log, getProxy: () => PROXY, timeoutMs: 2000 });
+  const fake = fakeModule();
+  const harness = createHarnessProxySync({ loadModule: async () => fake, relay });
+  try {
+    await harness.sync(PROXY);
+    const rs = relay.status();
+    assert.equal(rs.listening, true, "安装完成后中继必须仍在监听");
+    assert.ok(rs.port > 0);
+    assert.equal(harness.status().relayPort, rs.port);
+  } finally {
+    await harness.dispose();
+  }
+  assert.equal(relay.status().listening, false, "dispose 后中继应停止");
+});
+
+test("harness-relay: 重复 sync（策略未变）幂等且中继保持；变体触发重装时中继也不停", async () => {
+  const log = createTrafficLog({});
+  const relay = createRelay({ log, getProxy: () => PROXY, timeoutMs: 2000 });
+  const fake = fakeModule();
+  const harness = createHarnessProxySync({ loadModule: async () => fake, relay });
+  try {
+    await harness.sync(PROXY);
+    const port1 = relay.status().port;
+    await harness.sync(PROXY); // 幂等路径
+    assert.equal(relay.status().listening, true);
+    assert.equal(relay.status().port, port1);
+    // noProxy 变化 → key 变 → 重装（先还原再装），中继必须存活且端口不变
+    await harness.sync({ ...PROXY, noProxy: ["127.0.0.1", "example.com"] });
+    assert.equal(relay.status().listening, true, "重装路径不得停中继");
+    assert.equal(relay.status().port, port1);
+  } finally {
+    await harness.dispose();
+  }
+});
+
+test("harness-relay: sync(null) 停用 → 策略还原且中继停止", async () => {
+  const log = createTrafficLog({});
+  const relay = createRelay({ log, getProxy: () => PROXY, timeoutMs: 2000 });
+  const fake = fakeModule();
+  const harness = createHarnessProxySync({ loadModule: async () => fake, relay });
+  await harness.sync(PROXY);
+  assert.equal(relay.status().listening, true);
+  await harness.sync(null);
+  assert.equal(relay.status().listening, false, "停用后中继应停止");
+  assert.equal(fake.disposedCount(), 1);
+});
