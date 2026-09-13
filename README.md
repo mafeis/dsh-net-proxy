@@ -56,7 +56,7 @@ v0.4.0 起，插件把生效代理**同时安装进 harness 代理层**：定位
 
 - harness 代理层只接受 `http://` 代理 URL（`dsh-http-proxy` 的硬性约束）。协议选 `socks5` 时该层不安装（`web_fetch` 保持直连），fetch 包装层不受影响——Clash/v2rayN 的 mixed 端口同时提供 HTTP，把协议切到 HTTP 即可覆盖 `web_fetch`。
 - 两层互不替代：fetch 包装层覆盖所有直接调用 `globalThis.fetch` 的代码，harness 层覆盖 `web_fetch`。
-- 设置页「当前状态」下有一行 harness 层诊断（已安装并自检通过 / SOCKS 不适用 / 解析失败原因），解析不到时如实展示，不假装生效。
+- harness 层异常时设置页显示一行警告（自检未通过 / SOCKS 不适用 / 解析失败原因），如实展示、不假装生效；正常态不占版面，完整状态在 `GET /_dsh/net-proxy` 响应的 `harness` 字段。
 
 ## 许可证
 
@@ -66,7 +66,7 @@ MIT
 
 ### v0.4.0
 - **修复（[#5](https://github.com/mafeis/dsh-net-proxy/issues/5)）：`web_fetch` 现在真正走代理**——把生效策略同步装进 harness 代理层，详见上文[「web_fetch 与 harness 代理层」](#web_fetch-与-harness-代理层v040)一节。
-- 设置页新增 harness 层诊断行；`GET /_dsh/net-proxy` 响应新增 `harness` 字段（`mode` / `via` / `proxy` / `verified`）。
+- 设置页仅在 harness 层异常时显示警告行；`GET /_dsh/net-proxy` 响应新增 `harness` 字段（`mode` / `via` / `proxy` / `verified`）。
 - `@deepseek-ai/dsh-http-proxy` 声明为可选 peerDependency；新增 12 项测试（含对真实 `dsh-http-proxy` 的「安装→路由可见→还原」端到端验证），合计 80 项全绿。
 
 ### v0.3.0
