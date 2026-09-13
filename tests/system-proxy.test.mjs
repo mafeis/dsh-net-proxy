@@ -159,11 +159,23 @@ test("applyFollowSystem: 系统开 → 系统地址 + 凭据沿用 + noProxy 并
   assert.equal(eff.followNote, "ok");
 });
 
-test("applyFollowSystem: 系统关 → 直连；PAC/失败 → 回退手动", () => {
-  const off = applyFollowSystem(baseCfg, { supported: true, mode: "none", enabled: false });
-  assert.equal(off.enabled, false);
-  assert.equal(off.followNote, "system-off");
+test("applyFollowSystem: 总开关关 = 硬闸，跟随不得改写回启用", () => {
+  const offSwitch = { ...baseCfg, enabled: false };
+  const eff = applyFollowSystem(offSwitch, { supported: true, mode: "manual", enabled: true, protocol: "socks5", host: "1.1.1.1", port: 2, bypass: [] });
+  assert.equal(eff.enabled, false, "总开关关+系统开 → 仍不启用（用户明确关了就是关）");
+  assert.equal(eff.followNote, "");
+});
 
+test("applyFollowSystem: 系统关 + 总开关开 → 回退手填地址（不强制直连）", () => {
+  const manual = { ...baseCfg, host: "127.0.0.1", port: 7899 };
+  const off = applyFollowSystem(manual, { supported: true, mode: "none", enabled: false });
+  assert.equal(off.enabled, true, "总开关开，系统关只换地址来源，不剥夺启用权");
+  assert.equal(off.host, "127.0.0.1");
+  assert.equal(off.port, 7899, "用手填地址");
+  assert.equal(off.followNote, "system-off");
+});
+
+test("applyFollowSystem: PAC/读取失败 → 回退手填", () => {
   const pac = applyFollowSystem(baseCfg, { supported: true, mode: "pac", pacUrl: "http://x/w.pac", enabled: false });
   assert.equal(pac.enabled, true); // 回退手动配置（手动 enabled=true）
   assert.equal(pac.host, "127.0.0.1");

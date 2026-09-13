@@ -46,7 +46,7 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 - **日志详情弹窗**：点击条目行内展开关键信息，点「详情」弹出居中详情卡片（Esc/遮罩关闭），JSON 树行式布局重做、长 URL 单行截断。
 - **TOP 主机 8 → 10**；配色全面回归宿主主题变量（撤销全部自定硬编码色）。
 
-修复中继意外关闭后状态假活（status 报 listening 但 socket 已死）导致看护永不自愈的问题——状态以真实 socket 为准。完整变更历史见 [GitHub Releases](https://github.com/mafeis/dsh-net-proxy/releases)。
+修复中继意外关闭后状态假活导致看护永不自愈的问题；跟随模式语义修正：总开关=硬闸（关=永不转发），系统代理关闭时回退手填地址而非强制直连。完整变更历史见 [GitHub Releases](https://github.com/mafeis/dsh-net-proxy/releases)。
 
 ## 配置字段（net-proxy.json）
 
