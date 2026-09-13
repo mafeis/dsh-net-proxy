@@ -60,7 +60,27 @@ test("harness-relay: 重复 sync（策略未变）幂等且中继保持；变体
   }
 });
 
-test("harness-relay: sync(null) 停用 → 策略还原且中继停止", async () => {
+test("harness-relay: sync(null) 停用 → 策略还原，中继保持待命（端口终身制 v0.7.20）", async () => {
+  const log = createTrafficLog({});
+  const relay = createRelay({ log, getProxy: () => PROXY, timeoutMs: 2000 });
+  const fake = fakeModule();
+  const harness = createHarnessProxySync({ loadModule: async () => fake, relay });
+  try {
+    await harness.sync(PROXY);
+    const port1 = relay.status().port;
+    await harness.sync(null);
+    assert.equal(fake.disposedCount(), 1, "策略必须还原");
+    assert.equal(relay.status().listening, true, "中继保持待命：第三方单例 agent 的 env 引用永不过期");
+    assert.equal(relay.status().port, port1, "端口不变");
+    // 重新启用：端口必须复用（env 不变 → 第三方 agent 连接池永续）
+    await harness.sync(PROXY);
+    assert.equal(relay.status().port, port1, "重启用后端口必须复用");
+  } finally {
+    relay.stop(); // 测试收尾：端口终身制下中继常驻，必须显式关闭否则 node --test 挂起
+  }
+});
+
+test("harness-relay: dispose（插件卸载）→ 中继真正关闭", async () => {
   const log = createTrafficLog({});
   const relay = createRelay({ log, getProxy: () => PROXY, timeoutMs: 2000 });
   const fake = fakeModule();
@@ -68,8 +88,9 @@ test("harness-relay: sync(null) 停用 → 策略还原且中继停止", async (
   await harness.sync(PROXY);
   assert.equal(relay.status().listening, true);
   await harness.sync(null);
-  assert.equal(relay.status().listening, false, "停用后中继应停止");
-  assert.equal(fake.disposedCount(), 1);
+  assert.equal(relay.status().listening, true, "停用不停中继");
+  await harness.dispose();
+  assert.equal(relay.status().listening, false, "卸载才真正关闭");
 });
 
 test("harness-relay: 中继被外部停止后再次 sync 自愈（新端口重装，回归：死端口 env）", async () => {
