@@ -95,7 +95,8 @@ test("traffic-log: clear 清空条目与汇总", () => {
   const e = log.begin({ url: "https://x.com/" });
   e.addUp(1); e.finalize();
   log.clear();
-  assert.deepEqual(log.summary(), { total: 0, upBytes: 0, downBytes: 0, errors: 0, since: log.summary().since });
+  const s = log.summary();
+  assert.deepEqual(s, { total: 0, upBytes: 0, downBytes: 0, errors: 0, live: 0, since: s.since });
   assert.equal(log.list(10).length, 0);
 });
 
@@ -107,4 +108,41 @@ test("traffic-log: configure 热更预览长度", () => {
   e.finalize();
   const [it] = log.list(1);
   assert.equal(it.reqPreview, "ab…(+4B)");
+});
+
+test("traffic-log: live 熔断——挂死记录超限后 begin 返回 null，finalize 后恢复", () => {
+  const log = createTrafficLog({ maxLive: 3 });
+  const hs = [];
+  for (let i = 0; i < 3; i++) hs.push(log.begin({ url: `https://h${i}.com/` })); // 全部不 finalize（模拟挂死连接）
+  assert.equal(log.begin({ url: "https://blocked.com/" }), null); // 熔断
+  assert.equal(log.summary().live, 3);
+  hs[0].finalize(); // 释放一条
+  const resumed = log.begin({ url: "https://resumed.com/" });
+  assert.ok(resumed, "释放后应恢复记录");
+  assert.equal(log.summary().live, 3);
+  resumed.finalize();
+  assert.equal(log.summary().live, 2);
+});
+
+test("traffic-log: addPlain 只取首块，长流反复喂块不累积内存", () => {
+  const log = createTrafficLog({ previewBytes: 16 });
+  const e = log.begin({ url: "https://stream.com/sse" });
+  e.setResponse(200);
+  for (let i = 0; i < 10000; i++) e.addPlain(Buffer.from(`data: chunk-${i}\n\n`)); // SSE 式长流
+  e.addDown(10000 * 20);
+  e.finalize();
+  const [it] = log.list(1);
+  assert.ok(it.resPreview.length <= 64, `预览长度应有界（${it.resPreview.length}）`);
+  assert.equal(it.downBytes, 200000); // 字节计数不受预览截断影响
+});
+
+test("traffic-log: 满环后总内存有界——list 恒为 maxEntries 且条目引用被释放", () => {
+  const log = createTrafficLog({ maxEntries: 10, previewBytes: 64 });
+  for (let i = 0; i < 1000; i++) {
+    const e = log.begin({ url: `https://x.com/${i}?pad=${"y".repeat(2048)}` });
+    e.setRequestPreview(Buffer.from("z".repeat(2048)));
+    e.finalize();
+  }
+  assert.equal(log.list(1000).length, 10); // 环形硬上限
+  assert.equal(log.summary().total, 1000); // 统计是数字，不占条目内存
 });
