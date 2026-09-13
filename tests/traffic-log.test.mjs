@@ -146,3 +146,33 @@ test("traffic-log: 满环后总内存有界——list 恒为 maxEntries 且条�
   assert.equal(log.list(1000).length, 10); // 环形硬上限
   assert.equal(log.summary().total, 1000); // 统计是数字，不占条目内存
 });
+
+test("traffic-log: 二进制请求/响应（图片上传下载）存占位符不存乱码", () => {
+  const log = createTrafficLog({ previewBytes: 512 });
+  // PNG 魔数开头的大图请求
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(5 * 1024 * 1024, 7)]);
+  const e = log.begin({ method: "POST", url: "https://api.example.com/upload" });
+  e.setRequestPreview(png);
+  e.addUp(png.length);
+  e.setResponse(200);
+  e.addDown(2048);
+  e.finalize();
+  const [it] = log.list(1);
+  assert.match(it.reqPreview, /‹PNG 5242888B/); // 占位符带原始大小，无 5MB 拷贝
+  assert.ok(it.upBytes === png.length); // 字节计数不受影响
+
+  // 响应侧：二进制图片下行
+  const e2 = log.begin({ url: "https://api.example.com/image" });
+  e2.setResponse(200);
+  e2.addPlain(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(4096, 3)]));
+  e2.finalize();
+  const [it2] = log.list(1);
+  assert.match(it2.resPreview, /‹JPEG 4100B/);
+
+  // 文本不受影响
+  const e3 = log.begin({ url: "https://api.example.com/json" });
+  e3.setRequestPreview(Buffer.from('{"hello":"world"}'));
+  e3.finalize();
+  const [it3] = log.list(1);
+  assert.equal(it3.reqPreview, '{"hello":"world"}');
+});

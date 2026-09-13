@@ -13,7 +13,7 @@ function startUpstream() {
   const upstreams = new Set();
   const srv = http.createServer((req, res) => {
     const u = new URL(req.url); // absolute-form
-    const r = http.request({ host: u.hostname, port: u.port, path: u.pathname + u.search, method: req.method, headers: { host: u.host } }, (ur) => {
+    const r = http.request({ host: u.hostname, port: u.port, path: u.pathname + u.search, method: req.method, headers: { host: u.host }, agent: false }, (ur) => {
       res.writeHead(ur.statusCode, ur.headers);
       ur.pipe(res);
     });
@@ -160,4 +160,33 @@ test("relay: stop 关闭监听与既有连接", async (t) => {
   assert.equal(relay.status().listening, false);
   const closed = await new Promise((r) => { sock.once("close", () => r(true)); setTimeout(() => r(false), 1000); });
   assert.equal(closed, true);
+});
+
+test("relay: 客户端中途断开 → 上游销毁、日志 finalize、无泄漏", async (t) => {
+  // 目标：慢速大响应（撑满客户端缓冲触发 writeChunk 的 await drain）
+  const target = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    for (let i = 0; i < 100; i++) res.write("SLOW-CHUNK-".repeat(100));
+    // 不 end：响应保持打开
+  });
+  await new Promise((r) => target.listen(19195, "127.0.0.1", r));
+  const up = await startUpstream();
+  const log = createTrafficLog({});
+  const relay = createRelay({
+    log,
+    getProxy: () => ({ protocol: "http", host: "127.0.0.1", port: UPSTREAM, noProxy: [] }),
+    timeoutMs: 5000,
+  });
+  const { port } = await relay.start();
+  t.after(() => { relay.stop(); up.close(); target.closeAllConnections(); target.close(); });
+
+  const sock = net.connect(port, "127.0.0.1");
+  await new Promise((r) => sock.once("connect", r));
+  sock.write(`GET http://127.0.0.1:19195/slow HTTP/1.1\r\nHost: x\r\n\r\n`);
+  await new Promise((r) => setTimeout(r, 150)); // 让响应开始流动
+  sock.destroy(); // 客户端中途断开
+  // 中继应尽快收尾（上游销毁 → rs 读取报错/请求体写失败 → finalize），不挂死不泄漏
+  for (let i = 0; i < 40 && log.summary().live !== 0; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(log.summary().live, 0, "客户端断开后 live 记录应被回收");
+  assert.equal(relay.status().connections, 0, "连接应被清理");
 });
