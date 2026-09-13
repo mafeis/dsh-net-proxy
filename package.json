@@ -1,6 +1,6 @@
 {
   "name": "dsh-net-proxy",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "DeepSeek Harness network-proxy plugin: route the agent's own network requests (web_search / web_fetch / external APIs) through a configured HTTP/HTTPS-CONNECT/SOCKS5 proxy — both the global fetch wrapper and the harness proxy layer that web_fetch actually uses — with in-memory traffic logging (previews, counts, byte totals) and a settings UI.",
   "type": "module",
   "main": "lib/index.js",
