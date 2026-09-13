@@ -71,3 +71,25 @@ test("harness-relay: sync(null) 停用 → 策略还原且中继停止", async (
   assert.equal(relay.status().listening, false, "停用后中继应停止");
   assert.equal(fake.disposedCount(), 1);
 });
+
+test("harness-relay: 中继被外部停止后再次 sync 自愈（新端口重装，回归：死端口 env）", async () => {
+  const log = createTrafficLog({});
+  const relay = createRelay({ log, getProxy: () => PROXY, timeoutMs: 2000 });
+  const fake = fakeModule();
+  const harness = createHarnessProxySync({ loadModule: async () => fake, relay });
+  try {
+    await harness.sync(PROXY);
+    const port1 = relay.status().port;
+    relay.stop(); // 模拟中继意外死亡（宿主 fetch 会指向死端口）
+    assert.equal(relay.status().listening, false);
+    // 看护/配置变化触发的再次 sync：relay.start 换新端口 → 幂等键变化 → 重装
+    await harness.sync(PROXY);
+    const rs = relay.status();
+    assert.equal(rs.listening, true, "sync 必须把中继重新拉起");
+    assert.notEqual(rs.port, port1, "新端口必须与死端口不同");
+    assert.equal(harness.status().relayPort, rs.port, "策略必须重指到新端口");
+    assert.equal(fake.disposedCount(), 1, "重装前旧策略被卸载一次（首次安装不计卸载）");
+  } finally {
+    await harness.dispose();
+  }
+});
