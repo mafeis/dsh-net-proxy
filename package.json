@@ -50,8 +50,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6 || ^0.1.1-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.1",
-    "@deepseek-ai/dsh-http-proxy": "^0.1.5-rc.1"
+    "@deepseek-ai/dsh-http-proxy": "^0.1.5-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-http-proxy": {
@@ -67,6 +67,8 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^9.39.5",
     "globals": "^17.11.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "undici": "^8.10.0"
   }
 }
