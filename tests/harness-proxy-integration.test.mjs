@@ -7,6 +7,13 @@ import { createHarnessProxySync } from "../lib/harness-proxy.js";
 
 let pkg = null;
 let skip = typeof URL.parse !== "function" ? "URL.parse requires Node >= 22.6" : false;
+// undici 8.x（dsh-http-proxy 的传递依赖，engines: >=22.19）用到 markAsUncloneable；
+// Node 20 能装上包但运行时报 markAsUncloneable is not a function，按能力门控整组 skip。
+let markAsUncloneable = null;
+try {
+  markAsUncloneable = (await import("node:worker_threads")).markAsUncloneable;
+} catch {}
+skip = skip || (typeof markAsUncloneable !== "function" ? "undici 8 (dsh-http-proxy) requires markAsUncloneable (Node >= 22.19)" : false);
 try {
   pkg = await import("@deepseek-ai/dsh-http-proxy");
 } catch {
