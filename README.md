@@ -26,20 +26,12 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 |---|---|
 | 0.1 线（如 0.1.7-rc.2） | 兼容 |
 | 0.2 线（0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.x） | 兼容（0.8.0 起） |
-| 0.3 及以上 | 未验证 |
-
-> **0.7.x 及更早在 DSH 0.2 上不会被加载。** DSH ≥ 0.2 启动时按 `peerDependencies`
-> 逐条核对 `@deepseek-ai/dsh*`（`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`）。
-> 0.7.20 的 peer 区间只写了 0.1 线，宿主判定不兼容后会**整条跳过这个 bundle**——
-> 不抛错、不生效，症状只是「设置里没有网络代理这一项」，只有启动日志里留下一行
-> `skipping profile bundle "dsh-net-proxy": ... is incompatible with dsh ...`。
-> 0.8.0 把 peer 区间放宽到 0.1 线 + 整条 0.2 线，并补上 `dsh.engines.dsh` 与
-> `dsh.compatibility.dshReleases` 声明。`tests/manifest-compat.test.mjs` 复刻了宿主
-> 那段判定，区间再收窄时 CI 会先失败。
 
 ## 主要功能
 
 **双通道代理生效**：包装 agent 进程的全局 `fetch`（手写 HTTP/SOCKS5 转发，零第三方依赖），同时把生效策略同步安装进 `web_fetch` 实际使用的 harness 代理层——两类请求全覆盖，停用/卸载完整还原。
+
+**Desktop 侧边栏浏览器不在管辖内（issue #6）**：DeepSeek Harness Desktop 右侧的「浏览器」页面由 Electron `<webview>` guest 实现，代理策略在 Electron 主进程的 session 上；插件宿主是主进程拉起的子 Node 进程，够不到 session——**在插件里做的任何配置（启停、改端口、改协议）对侧边栏浏览器都不生效**。侧边栏始终跟随 Windows 系统代理（Chromium 默认行为），其流量不经过插件，**请求日志里也不会有侧边栏的记录**。因此：跟随系统代理时（插件读的也是系统配置）两者出口一致，表现正常；一旦插件配置偏离系统代理（如只改插件端口、系统代理关闭后插件回退手填地址），侧边栏仍按系统代理走。这是 DSH 的架构限制，单侧无法修复，需主进程侧提供桥接（见 issue #6）。
 
 **跟随系统代理**：每 3 秒读取系统代理设置，自动启停、自动跟随端口变化（v2rayN / Clash 切换无需改配置）；系统关闭时自动直连；Windows `ProxyOverride` 绕过列表自动并入 `NO_PROXY`。
 
@@ -55,7 +47,8 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 
 ## 最近调整
 
-- **v0.8.0 兼容 DSH 0.2**：`peerDependencies` 放宽到 0.1 线 + 整条 0.2 线（此前只写 0.1 线，DSH 0.2 启动时整条跳过本插件）；补 `dsh.engines.dsh` 与 `dsh.compatibility.dshReleases` 声明；`dsh.client.inject` 补上 client 入口真正依赖的两个图行（`dsh-client-ui-renderer` 提供 `slots`、`dsh-client-locale` 提供 `locale`）。运行时代码无需改动——在真实的 cordis 组合里挂载后 `/_dsh/net-proxy` 与 `/_dsh/net-proxy/log` 均正常应答，harness 代理层状态 `installed`、路由自检通过。
+- **说明侧边栏浏览器的代理行为（issue #6）**：右侧「浏览器」页面始终跟随系统代理，不归插件管，请求日志里没有它是正常的。详见「主要功能」一节。
+- **兼容 DSH 0.2**：修复在 DSH 0.2 上插件不加载的问题。
 - **总开关语义明确**：「代理已启用」徽章只反映「启用代理」总开关；跟随模式下横幅格式统一「（跟随系统）： 地址」（地址为真实读取的系统代理），生效与否只用红/绿横幅色表达。
 - **开关即时生效**：「启用代理」「跟随系统」勾选立即应用；「保存」按钮只负责地址/端口等输入项。
 - **健壮性专项（全量代码审查，11 处）**：连接失败时流量日志条目收尾（防 2000 条熔断后日志永久失效）；配置文件坏端口/坏协议在加载期拦截并回退默认（不再每条请求报连接错）；中继背压与解压泵挂死兜底；设置页保存不再重置手改的日志配置；修复 JSON 长字符串条件 Hook 可能导致设置页白屏。
@@ -63,8 +56,7 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 - **新增中继存活看护**：中继意外停止时 5 秒内自动重装策略（新端口重指），不再出现指向死端口的静默断网。
 - **日志详情弹窗**：点击条目行内展开关键信息，点「详情」弹出居中详情卡片（Esc/遮罩关闭），JSON 树行式布局重做、长 URL 单行截断。
 - **TOP 主机 8 → 10**；配色全面回归宿主主题变量（撤销全部自定硬编码色）。
-
-修复中继意外关闭后状态假活导致看护永不自愈的问题；跟随模式语义修正：总开关=硬闸（关=永不转发），系统代理关闭时回退手填地址而非强制直连。
+- **修复中继意外关闭后状态假活导致看护永不自愈的问题**；跟随模式语义修正：总开关=硬闸（关=永不转发），系统代理关闭时回退手填地址而非强制直连。
 - **中继端口终身制**：中继端口在插件进程内终身不变（总开关切换/策略重装不再换端口，仅卸载时关闭），保证第三方单例代理组件的地址引用永不过期。完整变更历史见 [GitHub Releases](https://github.com/mafeis/dsh-net-proxy/releases)。
 
 ## 配置字段（net-proxy.json）
@@ -83,6 +75,7 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 ## 技术说明
 
 - **harness 代理层**：DSH ≥ 0.1.5-rc.1 起 `web_fetch` 的出口不经过 `globalThis.fetch`，由 harness 的代理策略模块 `@deepseek-ai/dsh-http-proxy` 决定走向（[#5](https://github.com/mafeis/dsh-net-proxy/issues/5)）。插件定位 harness 已加载的同一模块实例（桌面端命中 `app.asar` 内实例，CLI 布局按 argv/bare 顺序回退）同步安装策略，停用与卸载还原到安装前状态。
+- **Desktop 侧边栏浏览器**：右侧浏览器由 Electron `<webview>` guest 实现，始终跟随 Windows 系统代理（Chromium 默认行为），不经过插件、日志无记录；插件配置对它不生效（插件宿主是主进程拉起的子 Node 进程，够不到 Electron session，[#6](https://github.com/mafeis/dsh-net-proxy/issues/6)）。跟随系统代理时两者出口一致；插件配置偏离系统代理时以系统代理为准。`lib/desktop-session.js` 保留为桥接就绪桩，未来主进程内加载插件宿主时自动激活。
 - **协议限制**：harness 代理层只接受 `http://` 代理 URL。协议选 `socks5` 时由本地中继桥接（v0.5.0 起），`socks5` 配置两层全覆盖；PAC 模式暂不支持自动跟随，回退手动配置并提示。
 - **隐私边界**：日志与完整内容只存内存、不落盘、不外发；TLS 隧道内容加密不可见（仅记目标与字节数）；二进制内容不存（只记类型与大小）；清空日志即彻底消失。
 - **零运行时依赖**：代理栈、中继、日志、图表全部 Node 原生模块 + 自绘实现，发布包 72.6 KB。
