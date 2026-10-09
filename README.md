@@ -20,6 +20,23 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
       name: 'dsh-net-proxy'
 ```
 
+## 兼容的 DSH 版本
+
+| DSH 运行时 | 状态 |
+|---|---|
+| 0.1 线（如 0.1.7-rc.2） | 兼容 |
+| 0.2 线（0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.x） | 兼容（0.8.0 起） |
+| 0.3 及以上 | 未验证 |
+
+> **0.7.x 及更早在 DSH 0.2 上不会被加载。** DSH ≥ 0.2 启动时按 `peerDependencies`
+> 逐条核对 `@deepseek-ai/dsh*`（`@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`）。
+> 0.7.20 的 peer 区间只写了 0.1 线，宿主判定不兼容后会**整条跳过这个 bundle**——
+> 不抛错、不生效，症状只是「设置里没有网络代理这一项」，只有启动日志里留下一行
+> `skipping profile bundle "dsh-net-proxy": ... is incompatible with dsh ...`。
+> 0.8.0 把 peer 区间放宽到 0.1 线 + 整条 0.2 线，并补上 `dsh.engines.dsh` 与
+> `dsh.compatibility.dshReleases` 声明。`tests/manifest-compat.test.mjs` 复刻了宿主
+> 那段判定，区间再收窄时 CI 会先失败。
+
 ## 主要功能
 
 **双通道代理生效**：包装 agent 进程的全局 `fetch`（手写 HTTP/SOCKS5 转发，零第三方依赖），同时把生效策略同步安装进 `web_fetch` 实际使用的 harness 代理层——两类请求全覆盖，停用/卸载完整还原。
@@ -38,6 +55,7 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 
 ## 最近调整
 
+- **v0.8.0 兼容 DSH 0.2**：`peerDependencies` 放宽到 0.1 线 + 整条 0.2 线（此前只写 0.1 线，DSH 0.2 启动时整条跳过本插件）；补 `dsh.engines.dsh` 与 `dsh.compatibility.dshReleases` 声明；`dsh.client.inject` 补上 client 入口真正依赖的两个图行（`dsh-client-ui-renderer` 提供 `slots`、`dsh-client-locale` 提供 `locale`）。运行时代码无需改动——在真实的 cordis 组合里挂载后 `/_dsh/net-proxy` 与 `/_dsh/net-proxy/log` 均正常应答，harness 代理层状态 `installed`、路由自检通过。
 - **总开关语义明确**：「代理已启用」徽章只反映「启用代理」总开关；跟随模式下横幅格式统一「（跟随系统）： 地址」（地址为真实读取的系统代理），生效与否只用红/绿横幅色表达。
 - **开关即时生效**：「启用代理」「跟随系统」勾选立即应用；「保存」按钮只负责地址/端口等输入项。
 - **健壮性专项（全量代码审查，11 处）**：连接失败时流量日志条目收尾（防 2000 条熔断后日志永久失效）；配置文件坏端口/坏协议在加载期拦截并回退默认（不再每条请求报连接错）；中继背压与解压泵挂死兜底；设置页保存不再重置手改的日志配置；修复 JSON 长字符串条件 Hook 可能导致设置页白屏。
@@ -68,6 +86,10 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 - **协议限制**：harness 代理层只接受 `http://` 代理 URL。协议选 `socks5` 时由本地中继桥接（v0.5.0 起），`socks5` 配置两层全覆盖；PAC 模式暂不支持自动跟随，回退手动配置并提示。
 - **隐私边界**：日志与完整内容只存内存、不落盘、不外发；TLS 隧道内容加密不可见（仅记目标与字节数）；二进制内容不存（只记类型与大小）；清空日志即彻底消失。
 - **零运行时依赖**：代理栈、中继、日志、图表全部 Node 原生模块 + 自绘实现，发布包 72.6 KB。
+- **宿主兼容自检**：`node tools/dsh-compat-probe.mjs <含 node_modules/@deepseek-ai 的目录>`
+  （通常是 `~/.dsh/profiles`）用真实的 cordis + `dsh-host-webserver` 挂载本插件，
+  再直接请求 `/_dsh/net-proxy` 与 `/_dsh/net-proxy/log`，把激活期与请求期的每一条错误打出来。
+  排查「换了 DSH 版本后插件还灵不灵」时先跑它；退出码非 0 即存在硬错误。
 
 ## 许可证
 
