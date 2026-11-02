@@ -67,6 +67,7 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 | `followSystem` | `false` | 跟随系统代理 |
 | `protocol` | `http` | `http`（含 CONNECT 隧道）或 `socks5` |
 | `host` / `port` | `127.0.0.1` / `7890` | 代理地址 |
+| `timeout` | `60000` | 插件 fetch 转发的超时，单位毫秒，整数 1–2147483647；设置页以秒编辑 |
 | `username` / `password` | 空 | 可选认证 |
 | `noProxy` | `["127.0.0.1","localhost","::1"]` | 命中则直连 |
 | `logEnabled` | `true` | 请求日志开关（关闭后不再记录新条目） |
