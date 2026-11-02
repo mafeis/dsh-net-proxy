@@ -7,10 +7,16 @@ DeepSeek Harness 网络代理插件：让 **agent 自己发起的网络请求**�
 ## 安装
 
 ```bash
-dsh plugin --profile web add github:mafeis/dsh-net-proxy
+dsh plugin --profile web add dsh-net-proxy
 ```
 
 安装后重启 `dsh web`，在 设置 → 网络代理 里启用并填写代理地址（如 `127.0.0.1:7890`）。
+
+或从 GitHub 直装（始终取最新 `main`，未经 npm 版本校验）：
+
+```bash
+dsh plugin --profile web add github:mafeis/dsh-net-proxy
+```
 
 也可手动在 profile 的 `cordis.patch.yml` 加入：
 
