@@ -249,6 +249,32 @@ test("body 加固：Content-Length 截断 → ERESP_END 而非静默短读", asy
   await assert.rejects(resp.text(), (e) => e.code === "ERESP_END");
 });
 
+test("响应头：多个 Set-Cookie 全部保留，不被合并成一条", async (t) => {
+  // 用对象收尾同名头会覆盖成最后一个；即便保留数组，再 new Headers(hdrs)
+  // 也会被按 ", " 拼成一条。Set-Cookie 按出现次数迭代，必须逐个保留。
+  const srv = net.createServer((s) => {
+    s.end(
+      "HTTP/1.1 200 OK\r\n" +
+      "Set-Cookie: a=1; Path=/\r\n" +
+      "Content-Length: 2\r\n" +
+      "Set-Cookie: b=2; Path=/\r\n" +
+      "Set-Cookie: c=3; Path=/\r\n\r\nok"
+    );
+  });
+  await new Promise((r) => srv.listen(T3, "127.0.0.1", r));
+  t.after(() => { srv.closeAllConnections?.(); srv.close(); });
+  const sock = net.connect({ host: "127.0.0.1", port: T3 });
+  await new Promise((r) => sock.once("connect", r));
+  const resp = await sendViaSocket(
+    sock, `http://127.0.0.1:${T3}/cookies`,
+    "GET /cookies HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+    null, {}
+  );
+  assert.equal(resp.status, 200);
+  assert.equal(resp.headers.getSetCookie().join("|"), "a=1; Path=/|b=2; Path=/|c=3; Path=/");
+  assert.equal(await resp.text(), "ok");
+});
+
 // ───────────────────────── Request 对象入参 ─────────────────────────
 
 test("proxiedFetch(Request) 继承 headers/body/signal（对齐 fetch 契约）", async () => {

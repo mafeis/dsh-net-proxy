@@ -42,7 +42,22 @@ function startUpstream() {
 }
 
 function startTarget() {
-  const srv = http.createServer((req, res) => {
+  // keepAlive 关闭：目标回完即关流，上游转发连接随之结束（否则测试收尾留悬空 socket）
+  const srv = http.createServer({ keepAlive: false }, (req, res) => {
+    // /c：多值 set-cookie；/204、其他：无体/HEAD 场景
+    if (req.url === "/c") {
+      res.setHeader("Set-Cookie", ["a=1; Path=/", "b=2; Path=/", "c=3; Path=/"]);
+      res.setHeader("Content-Type", "text/plain");
+      res.end("COOKIES");
+      return;
+    }
+    if (req.url === "/204") { res.writeHead(204, { "X-Kind": "empty" }); res.end(); return; }
+    if (req.method === "HEAD") {
+      // 声明 CL 却不发体，中继若照读体会挂到上游关流并误报截断
+      res.writeHead(200, { "Content-Length": "999", "X-Kind": "head" });
+      res.end();
+      return;
+    }
     res.writeHead(200, { "Content-Type": "text/plain", "X-Relay-Path": req.url });
     res.end(`TARGET-BODY:${req.url}`);
   });
@@ -55,6 +70,44 @@ async function readAll(sock) {
   const chunks = [];
   for await (const c of sock) chunks.push(c);
   return Buffer.concat(chunks).toString("latin1");
+}
+
+/** 连一次中继发请求，读完整响应后显式销毁 socket（不留待进程收尾） */
+async function exchangeOnce(port, rawRequest) {
+  const sock = net.connect(port, "127.0.0.1");
+  await new Promise((r) => sock.once("connect", r));
+  sock.end(rawRequest);
+  const resp = await readAll(sock);
+  sock.destroy();
+  return resp;
+}
+
+/** 把分块传输的实体（头块之后的文本）解码成纯文本 */
+function decodeChunked(text) {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const nl = text.indexOf("\r\n", i);
+    if (nl === -1) return out;
+    const size = parseInt(text.slice(i, nl).trim().split(";")[0], 16);
+    if (!Number.isFinite(size) || size <= 0) return out; // 终止块
+    const start = nl + 2;
+    out += text.slice(start, start + size);
+    i = start + size + 2;
+  }
+}
+
+/** 解析一段 HTTP 响应头，返回 { statusLine, headers: [{name, value}], body: 头块之后的原文 } */
+function parseHead(resp) {
+  const lines = resp.split("\r\n");
+  const blank = lines.indexOf("");
+  assert.ok(blank > 0, `响应头后必须有终止空行，实际: ${JSON.stringify(resp.slice(0, 200))}`);
+  const headers = lines.slice(1, blank).map((l) => {
+    const ci = l.indexOf(":");
+    assert.notEqual(ci, -1, `头行必须形如 name: value，实际: ${JSON.stringify(l)}`);
+    return { name: l.slice(0, ci).toLowerCase(), value: l.slice(ci + 1).trim() };
+  });
+  return { statusLine: lines[0], headers, body: lines.slice(blank + 1).join("\r\n") };
 }
 
 test("relay: CONNECT 隧道桥接到上游代理并记录字节日志", async (t) => {
@@ -118,7 +171,15 @@ test("relay: absolute-form 明文转发 + 完整请求/响应日志", async (t) 
   sock.end(`GET http://127.0.0.1:${TARGET}/abs?q=2 HTTP/1.1\r\nHost: 127.0.0.1:${TARGET}\r\nConnection: close\r\n\r\n`);
   const resp = await readAll(sock);
   assert.match(resp, /^HTTP\/1\.1 200/);
-  assert.match(resp, /TARGET-BODY:\/abs\?q=2/);
+  // 回归 issue #9：头块必须以空行（CRLFCRLF）终止；曾在结尾只补单个 CRLF，
+  // 响应体（分块长度）被当成头字段（curl: (8) Header without colon、web_fetch: fetch failed）。
+  const { statusLine, headers, body } = parseHead(resp);
+  assert.match(statusLine, /^HTTP\/1\.1 200/);
+  assert.ok(!/^\r\n/.test(body), "头块后不应再有空行（说明空行被重复写出）");
+  // 空行之后解码 chunked 取出实体，必须与目标返回的完全一致（不多不少）
+  assert.equal(decodeChunked(body), "TARGET-BODY:/abs?q=2");
+  // connection 只能出现一次（响应侧不再重复插入）
+  assert.equal(headers.filter((h) => h.name === "connection").length, 1, "connection 头字段只应出现一次");
 
   for (let i = 0; i < 20 && log.list(1).length === 0; i++) await new Promise((r) => setTimeout(r, 25));
   const [it] = log.list(1);
@@ -132,6 +193,46 @@ test("relay: absolute-form 明文转发 + 完整请求/响应日志", async (t) 
   const s = log.summary();
   assert.equal(s.total, 1);
   assert.ok(s.downBytes > 0);
+});
+
+test("relay: 同名响应头不合并（多个 set-cookie 逐个透传）", async (t) => {
+  const up = await startUpstream();
+  const target = await startTarget();
+  const relay = createRelay({
+    getProxy: () => ({ protocol: "http", host: "127.0.0.1", port: UPSTREAM, noProxy: [] }),
+    timeoutMs: 5000,
+  });
+  const { port } = await relay.start();
+  t.after(() => { relay.stop(); up.close(); target.close(); });
+
+  const resp = await exchangeOnce(port, `GET http://127.0.0.1:${TARGET}/c HTTP/1.1\r\nHost: 127.0.0.1:${TARGET}\r\nConnection: close\r\n\r\n`);
+  const { headers, body } = parseHead(resp);
+  const cookies = headers.filter((h) => h.name === "set-cookie").map((h) => h.value);
+  assert.deepEqual(cookies, ["a=1; Path=/", "b=2; Path=/", "c=3; Path=/"]);
+  // 本响应按 content-length 定界，实体就是头块之后的原文
+  assert.equal(body, "COOKIES");
+});
+
+test("relay: 无消息体响应（HEAD / 204）不读体、不误报截断", async (t) => {
+  const up = await startUpstream();
+  const target = await startTarget();
+  const log = createTrafficLog({});
+  const relay = createRelay({
+    log,
+    getProxy: () => ({ protocol: "http", host: "127.0.0.1", port: UPSTREAM, noProxy: [] }),
+    timeoutMs: 5000,
+  });
+  const { port } = await relay.start();
+  t.after(() => { relay.stop(); up.close(); target.close(); });
+
+  for (const [method, path, want] of [["HEAD", "/h", 200], ["GET", "/204", 204]]) {
+    const resp = await exchangeOnce(port, `${method} http://127.0.0.1:${TARGET}${path} HTTP/1.1\r\nHost: 127.0.0.1:${TARGET}\r\nConnection: close\r\n\r\n`);
+    const { statusLine } = parseHead(resp);
+    assert.match(statusLine, new RegExp(`^HTTP/1\\.1 ${want}`), `${method} ${path} 应回 ${want}`);
+  }
+  // 两个请求都必须正常收尾且状态正确（无 ERESP_END 之类）
+  for (let i = 0; i < 20 && log.list().filter((e) => !e.live).length < 2; i++) await new Promise((r) => setTimeout(r, 25));
+  assert.deepEqual(log.list().filter((e) => !e.live).map((e) => e.status).sort(), [200, 204]);
 });
 
 test("relay: getProxy 返回 null（停用）→ 507 且日志记录失败", async (t) => {
@@ -164,7 +265,7 @@ test("relay: stop 关闭监听与既有连接", async (t) => {
 
 test("relay: 客户端中途断开 → 上游销毁、日志 finalize、无泄漏", async (t) => {
   // 目标：慢速大响应（撑满客户端缓冲触发 writeChunk 的 await drain）
-  const target = http.createServer((req, res) => {
+  const target = http.createServer({ keepAlive: false }, (req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     for (let i = 0; i < 100; i++) res.write("SLOW-CHUNK-".repeat(100));
     // 不 end：响应保持打开
@@ -178,6 +279,7 @@ test("relay: 客户端中途断开 → 上游销毁、日志 finalize、无泄�
     timeoutMs: 5000,
   });
   const { port } = await relay.start();
+  // 响应永不完结，收尾必须强关 target 侧连接，否则测试进程挂住
   t.after(() => { relay.stop(); up.close(); target.closeAllConnections(); target.close(); });
 
   const sock = net.connect(port, "127.0.0.1");
