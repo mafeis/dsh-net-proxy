@@ -86,7 +86,10 @@ async function fixture(t, protocol) {
     fs.rmSync(directory, { recursive: true, force: true });
   });
   const origin = protocol === "h2" ? `https://fixture.invalid:${target.address().port}` : "http://fixture.invalid";
-  function save(timeout) { writeConfig({ enabled: true, host: "127.0.0.1", port: proxy.address().port, timeout }, file); }
+  function save(timeout) {
+    // h2 目标只提供 h2：显式 alpn="h2"（默认 http/1.1 只能靠降级兜底，测不到 h2 超时语义）
+    writeConfig({ enabled: true, host: "127.0.0.1", port: proxy.address().port, timeout, ...(protocol === "h2" ? { alpn: "h2" } : {}) }, file);
+  }
   function request(route, signal = AbortSignal.timeout(5000)) {
     // Intentionally cross disk + validation + projection, not a hand-built proxy.
     return proxiedFetch(origin + route, { signal }, toProxy(loadConfig(file)), fetch);

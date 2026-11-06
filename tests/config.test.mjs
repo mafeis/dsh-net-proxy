@@ -22,6 +22,26 @@ test("config: defaults/toProxy/toCfg 契约", () => {
   assert.equal(c.protocol, "http"); // 未提供时用默认
 });
 
+test("config: alpn/h2Fallback 契约（issue #13）", () => {
+  // 默认不再声明 h2：见 h2 就 RST 的链路才会通
+  assert.equal(defaults().alpn, "http/1.1");
+  assert.equal(defaults().h2Fallback, true);
+  assert.equal(toProxy({ protocol: "http", host: "h", port: 1 }).alpn, "http/1.1");
+  assert.equal(toProxy({ protocol: "http", host: "h", port: 1 }).h2Fallback, true);
+  assert.equal(toProxy({ protocol: "http", host: "h", port: 1, alpn: "h2" }).alpn, "h2");
+  assert.equal(toProxy({ protocol: "http", host: "h", port: 1, alpn: "off" }).alpn, "off");
+  assert.equal(toProxy({ protocol: "http", host: "h", port: 1, h2Fallback: false }).h2Fallback, false);
+  // 大小写/空格归一；非法值落在默认，不让坏配置 deafen 整个代理
+  assert.equal(toProxy({ protocol: "http", host: "h", port: 1, alpn: " H2 " }).alpn, "h2");
+  assert.equal(toProxy({ protocol: "http", host: "h", port: 1, alpn: "h3" }).alpn, "http/1.1");
+  // toCfg 是写入侧校验：和其他字段一样，未知取值直接报错
+  assert.equal(toCfg({ alpn: "h2" }).alpn, "h2");
+  assert.throws(() => toCfg({ alpn: "h3" }), /invalid alpn/);
+  // 只有明确的 false 才关掉降级
+  assert.equal(toCfg({}).h2Fallback, true);
+  assert.equal(toCfg({ h2Fallback: false }).h2Fallback, false);
+});
+
 test("config: writeConfig -> loadConfig 往返", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "npcfg-"));
   const file = path.join(dir, "net-proxy.json");

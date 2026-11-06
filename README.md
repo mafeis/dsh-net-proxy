@@ -64,10 +64,25 @@ dsh plugin --profile web add github:mafeis/dsh-net-proxy
 | `protocol` | `http` | `http`（含 CONNECT 隧道）或 `socks5` |
 | `host` / `port` | `127.0.0.1` / `7890` | 代理地址 |
 | `timeout` | `60000` | 插件 fetch 转发的超时，单位毫秒，整数 1–2147483647；设置页以秒编辑 |
+| `alpn` | `http/1.1` | TLS ALPN 声明：`http/1.1`（只声明 HTTP/1.1）、`h2`（优先 h2，失败可降级）、`off`（不声明 ALPN）。见 [ALPN 与 h2 降级](#alpn-与-h2-降级) |
+| `h2Fallback` | `true` | `alpn: "h2"` 时，握手被重置（ECONNRESET 等）且尚未发出请求字节，则改按 HTTP/1.1 重试一次 |
 | `username` / `password` | 空 | 可选认证 |
 | `noProxy` | `["127.0.0.1","localhost","::1"]` | 命中则直连 |
 | `logEnabled` | `true` | 请求日志开关（关闭后不再记录新条目） |
 | `logPreviewBytes` | `512` | 每侧内容预览的最大字节数（0–8192，0 = 不记内容） |
+
+## ALPN 与 h2 降级
+
+TLS ClientHello 里的 ALPN 对代理是可见的，部分代理出口/目标边缘一见到 `h2` 就把连接 RST，表现为 `TLS to <host> failed: read ECONNRESET`（[#13](https://github.com/mafeis/dsh-net-proxy/issues/13)）。
+
+因此默认改为只声明 `http/1.1`：
+
+- **默认**（`alpn: "http/1.1"`）：不出现 `h2`，对 h2 敏感的链路直接可用；代价是拿不到 h2 的多路复用。
+- **`alpn: "h2"`**：仍然优先 h2，但握手被重置且请求字节尚未发出时，会自动重拨隧道并以 `http/1.1` 再握一次。写过请求字节就不再重试，流式 body 因此不会被重放。窄带联通后再遇到同类目标会记住（按「协议+代理+目标」记最多 256 条，代理或 ALPN 设置变更即清空），不必每条请求都先失败一次。
+- **`h2Fallback: false`**：保留重试前的行为——只握一次，失败即抛。
+- **`alpn: "off"`**：完全不发 ALPN 扩展（个别老代理需此）。
+
+目标是仅支持 h2 的服务（且链路不重置）时，用默认的 `http/1.1` 会握手失败；把 `alpn` 设为 `h2` 即可。
 
 ## 技术说明
 

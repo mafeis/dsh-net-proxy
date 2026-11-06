@@ -59,7 +59,8 @@ test("h2 长连接中途断开：调用方收到错误，且不得逃逸成 unca
     proxy.closeAllConnections?.(); proxy.close();
   });
 
-  const cfg = { protocol: "http", host: "127.0.0.1", port: PROXY, username: "", password: "", noProxy: [] };
+  // 目标只提供 h2：显式 alpn="h2"（默认 http/1.1 会让 h2-only 目标先失败再降级，测不到 h2 会话）
+  const cfg = { protocol: "http", host: "127.0.0.1", port: PROXY, username: "", password: "", noProxy: [], alpn: "h2" };
   const response = await proxiedFetch("https://127.0.0.1:" + TARGET + "/stream", { method: "GET" }, cfg, fetch);
   assert.equal(response.status, 200);
 
