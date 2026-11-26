@@ -37,3 +37,58 @@ test("ByteStream._take 分帧：一次多帧 + 分多次小块都正确读取（
   assert.ok(Buffer.from(body).toString().includes("BODY-DATA"));
   s3.destroy();
 });
+
+test("ByteStream._take 跨块记账：len 必须与队列真实剩余一致（issue #14）", async () => {
+  const s = new PassThrough();
+  const b = new ByteStream(s);
+  s.write(Buffer.alloc(100, 0x41));
+  s.write(Buffer.alloc(400, 0x42));
+
+  const first = await b.readExactly(300);
+  assert.equal(first.length, 300);
+  // 真实队列只剩 200 字节；修复前 len 虚高成 300
+  assert.equal(b.q.reduce((a, c) => a + c.length, 0), 200);
+  assert.equal(b.len, 200);
+
+  // 修复前 _pull 认定 len(300) >= 300 → 立即兑现但只给 200（短读）
+  const second = await b.readExactly(200);
+  assert.equal(second.length, 200);
+  assert.equal(b.len, 0);
+  s.destroy();
+});
+
+test("ByteStream 随机切片压测：任意切断位置下 readExactly 都不短读、不丢字节", async () => {
+  const total = 32000;
+  const payload = Buffer.alloc(total);
+  for (let i = 0; i < total; i++) payload[i] = (i * 31 + 7) & 0xff;
+
+  const s = new PassThrough();
+  const b = new ByteStream(s);
+
+  // 先把整条流按随机长度切成碎片写入
+  let off = 0;
+  const chunks = [];
+  while (off < total) {
+    const n = 1 + ((off * 17 + chunks.length * 41) % 97);
+    const piece = payload.subarray(off, Math.min(off + n, total));
+    chunks.push(piece);
+    s.write(piece);
+    off += piece.length;
+  }
+
+  // 再按随机长度逐次精确读取，逐字节比对
+  const got = [];
+  let read = 0;
+  let k = 0;
+  while (read < total) {
+    const want = Math.min(1 + ((k++ * 53 + read * 7) % 211), total - read);
+    const part = await b.readExactly(want);
+    assert.equal(part.length, want, `short read at offset ${read}: got ${part.length} of ${want}`);
+    assert.equal(b.len, b.q.reduce((a, c) => a + c.length, 0), "len 与队列不一致");
+    got.push(part);
+    read += want;
+  }
+  assert.equal(read, total);
+  assert.ok(Buffer.concat(got).equals(payload), "内容必须逐字节一致");
+  s.destroy();
+});
